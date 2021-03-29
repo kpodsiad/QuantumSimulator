@@ -6,7 +6,9 @@ setup(
     description='My first Python library',
     author='kpodsiad',
     license='MIT',
-    install_requires=[],
+    install_requires=[
+        "numpy >= 1.20.0"
+    ],
     setup_requires=['pytest-runner'],
     tests_require=['pytest==6.2.2'],
     test_suite='tests',

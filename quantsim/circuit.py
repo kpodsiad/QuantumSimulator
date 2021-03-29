@@ -1,73 +1,66 @@
 import numpy as np
-from abc import ABCMeta
-from typing import List, Union
-
-zero = np.array([1, 0])
-one = np.array([0, 1])
+from functools import reduce
 
 
-class Gate(metaclass=ABCMeta):
-    def __init__(self, matrix):
-        self.matrix = matrix
-
-    def apply(self, statevector):
-        return statevector @ self.matrix
-
-class HadamardGate(Gate):
-    def __init__(self):
-        matrix = np.array([1, 1, 1, -1]).reshape(2,2) * (2**(-0.5))
-        super().__init__(matrix)
-
-class PauliXGate(Gate):
-    def __init__(self):
-        matrix = np.array([0, 1, 1, 0]).reshape(2,2)
-        super().__init__(matrix)
-class PauliYGate(Gate):
-    def __init__(self):
-        matrix = np.array([0, -1j, 1j, 0]).reshape(2,2)
-        super().__init__(matrix)
-class PauliZGate(Gate):
-    def __init__(self):
-        matrix = np.array([1, 0, 0, -1]).reshape(2,2)
-        super().__init__(matrix)
-class Qubit():
-    def __init__(self):
-        self.statevector = np.array([1, 0])
-        self.state = 0
-        self.gates: List[Gate] = []
-
-    def __str__(self):
-        return str(self.statevector)
-
-    def apply(self, gate: Gate):
-        self.gates.append(gate)
-    
-    def measure(self):
-        for gate in self.gates:
-            self.statevector = gate.apply(self.statevector)
-        probs = np.abs(self.statevector ** 2)
-        return np.random.choice(2, p=probs)
+hadamard_gate = (2**(-0.5)) * np.array([[1, 1], [1, -1]])
+pauli_x_gate = np.array([[0, 1], [1, 0]])
+pauli_y_gate = np.array([[0, -1j], [1j, 0]])
+pauli_z_gate = np.array([[1, 0], [0, -1]])
+cnot = np.array([
+    [1,0,0,0],
+    [0,1,0,0],
+    [0,0,0,1],
+    [0,0,1,0],
+])
 
 class Circuit():
     def __init__(self, bits: int):
         self.bits = bits
-        self.register: List[Qubit] = [Qubit() for _ in range(bits)]
+        self.__init_register()
+        self.state = None
+        self.circuit_matrix = np.eye(2 ** bits)
+
+    def __init_register(self):
+        gates = [np.array([complex(1, 0), complex(0, 0)]) for _ in range(self.bits)]
+        self.register = reduce(lambda a, b: np.kron(a,b), gates)
+
+    def __update_circuit_matrix(self, gates):
+        gates = list(reversed(gates))
+        m = gates[0]
+        for gate in gates[1:]:
+            m = np.kron(m, gate)
+        self.circuit_matrix = self.circuit_matrix @ m
 
     def h(self, idx: int):
-        self.register[idx].apply(HadamardGate())
+        gates = [np.eye(2) for _ in range(self.bits)]
+        gates[idx] = hadamard_gate
+        self.__update_circuit_matrix(gates)
 
     def x(self, idx: int):
-        self.register[idx].apply(PauliXGate())
+        gates = [np.eye(2) for _ in range(self.bits)]
+        gates[idx] = pauli_x_gate
+        self.__update_circuit_matrix(gates)
 
     def y(self, idx: int):
-        self.register[idx].apply(PauliYGate())
+        gates = [np.eye(2) for _ in range(self.bits)]
+        gates[idx] = pauli_y_gate
+        self.__update_circuit_matrix(gates)
 
     def z(self, idx: int):
-        self.register[idx].apply(PauliZGate())
+        gates = [np.eye(2) for _ in range(self.bits)]
+        gates[idx] = pauli_z_gate
+        self.__update_circuit_matrix(gates)
 
-    def measure(self, idx: Union[int, None] = None):
-        idx = [idx] if idx is not None else range(self.bits)
-        return [self.register[i].measure() for i in idx]
+    def cx(self, control: int, target: int):
+        gates = [np.eye(2) for k in range(self.bits)]
+        gates[control] = cnot
+        del gates[target]
+        self.__update_circuit_matrix(gates)
 
-    def __str__(self):
-        return '\n'.join([str(qubit) for qubit in self.register])
+
+    def measure(self):
+        m = self.circuit_matrix @ self.register
+        props = np.abs(m*m)
+        fmt = f'0{self.bits}b'
+        x = [format(i, fmt) for i in range(2**self.bits)]
+        self.state = np.random.choice(x, p=props)
